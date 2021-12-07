@@ -9,3 +9,74 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+# Считываю .rdata файлы ../bioinf_project/data/wave2/....
+```{r}
+load("C:/Biostat2021/final_project/bioinf_project/data/wave2/phone_survey/phone_survey_data.rdata")
+
+load("C:/Biostat2021/final_project/bioinf_project/data/wave2/test_results/test_B/test_B_results_matched_to_phone_survey_ids.rdata")
+
+load("C:/Biostat2021/final_project/bioinf_project/data/wave2/test_results/test_C/test_C_results_matched_to_phone_survey_ids.rdata")
+
+load("C:/Biostat2021/final_project/bioinf_project/data/wave2/test_results/test_D/test_D_results_matched_to_phone_survey_ids.rdata")
+
+load("C:/Biostat2021/final_project/bioinf_project/data/wave2/test_results/other_tests/other_test_results_matched_to_phone_survey_ids.rdata")
+
+
+```
+
+
+# Меняем, где необходимо, тип данных на факторные в phone_survey_data, сохраняем в таблицу phone_survey 
+```{r}
+phone_survey_data %>% 
+  mutate(across(!c("interviewer", "interview_duration", ,"smoking_start_age", "smoking_giveup_age", "age", "cigarettes_per_day", "coffee_cups_per_day", "num_people_home", "error_in_randomization", "interview_date"), function(x) x %>% as.factor())) -> phone_survey
+
+# phone_survey %>% 
+#  str()
+
+```
+
+# Меняем тип данных в переменных ID и visited_clinic на факторные в other_test_results_matched_to_phone_survey_ids, сохраняем в таблицу tests 
+```{r}
+other_test_results_matched_to_phone_survey_ids %>% 
+  mutate(across(c("ID", "visited_clinic"), function(x) x %>% as.factor())) -> tests
+
+#tests %>% 
+#  glimpse()
+
+
+
+```
+
+
+# Объединяем данные телефонного опроса и результаты лабораторного тестирования
+
+```{r}
+merged_data <- merge(phone_survey, tests, by = "ID", all.y = T) #здесь объединены данные сероопроса и данные лабораторных исследований.   
+
+
+# merged_data %>% 
+#    glimpse()
+
+
+```
+
+# Создаем факторную переменные age_grouped и age_grouped_who (как предложила Юлия) в датасете merged_data 
+```{r}
+max(merged_data$age)
+min(merged_data$age)
+merged_data$age_grouped <- cut(merged_data$age, breaks = c(17, 20, 25, 30, 35, 40, 45, 50,55, 60, 95), labels = c("18-20", "21-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61+")) 
+
+merged_data$age_grouped_who <- cut(merged_data$age, breaks = c(17, 44, 59, 74, 90, 95), labels = c("18-44", "45-59", "60-74", "75-90", "90+"))
+
+#18-44 (молодые), 45-59 (средний возраст), 60-74 (пожилые) и 75-90 (старческий  возраст) ну и старше (долгожители)
+
+merged_data %>% 
+  #filter(age == 18) %>% 
+  select(age, age_grouped, age_grouped_who) %>%  #проверила, как разбилось
+  head()
+
+
+
+
+```
