@@ -7,6 +7,18 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(FSA)
+library(car)
+
+library(tidyverse)
+library(broom)
+library(splines)
+library(GGally)
+library(sjPlot)
+library(ggpubr)
 ```
 
 
@@ -75,6 +87,237 @@ merged_data %>%
   #filter(age == 18) %>% 
   select(age, age_grouped, age_grouped_who) %>%  #проверила, как разбилось
   head()
+
+
+
+
+```
+
+# Посмотрим на возрастные группы
+```{r}
+ggplot(data = merged_data, aes(x = age_grouped))+
+  geom_bar()+
+  theme_classic()
+
+
+ggplot(data = merged_data, aes(x = age_grouped_who))+
+  geom_bar()+
+  theme_classic()
+
+
+```
+
+# Смотрим на IgG_hpylori разбитый по age_grouped. 
+```{r}
+merged_data %>%
+  filter(!(is.na(IgG_hpylori))) %>% 
+  ggplot(aes(y = IgG_hpylori, x = age_grouped))+
+  geom_boxplot()+
+  geom_jitter(alpha = 0.3)+
+  scale_y_log10()+
+  theme_classic()
+
+# Визуально кажется, что есть скачок между 31-35 и 36-40.
+
+
+```
+
+```{r}
+hpylori_anova <- aov(IgG_hpylori ~ age_grouped, data = merged_data)
+# Гомогенность дисперсий
+plot(hpylori_anova, 1)
+leveneTest(IgG_hpylori ~ age_grouped, data = merged_data) #
+
+# Нормальность распределения остатков
+plot(hpylori_anova, 2)
+
+
+
+```
+
+# Выполняем тест Kruskall-Wallis и в качестве post-hoc Dunn’s test. 
+
+```{r}
+kruskal.test(IgG_hpylori ~ age_grouped, data = merged_data)
+
+
+dunnTest_hpylori <- as.data.frame(dunnTest(IgG_hpylori ~ age_grouped, merged_data)$res)
+
+dunnTest_hpylori %>% 
+  filter(P.adj < 0.05)
+
+```
+
+
+#  Уровень IgG у испытуемых, живущих с партнером 
+```{r}
+merged_data %>% 
+  filter(!(is.na(spouse_or_partner))) %>% 
+  ggplot(aes(y = IgG_hpylori, x = spouse_or_partner))+
+  geom_boxplot()+
+  scale_y_log10()+
+  stat_compare_means()+
+  theme_classic()
+
+
+
+
+merged_data %>% 
+  filter(!(is.na(spouse_or_partner))) %>% 
+  ggplot(aes(x = IgG_hpylori))+
+  geom_histogram()+
+  facet_grid(.~spouse_or_partner)
+
+wilcox.test(IgG_hpylori ~ spouse_or_partner, data = merged_data)
+
+```
+
+# Разбиваем испытуеммых на 2 группы - IgG к Хеликобактер ниже 10 и выше/равно 10. 
+```{r}
+
+merged_data$IgG_hpylori_group <- ifelse(merged_data$IgG_hpylori < 10, 0, 1) # 1 - больше 10, 0 - меньше 10. 10 - на основании японской статьи, там тоже был порог в 10
+
+
+```
+
+## барплот - доработать легенду 
+
+```{r, fig.height = 10, fig.width=15}
+
+merged_data |> 
+  filter(!is.na(IgG_hpylori_group)) |> 
+  group_by(age_grouped) |> 
+  mutate(lower_bounds = binom.test(as.numeric(sum(IgG_hpylori_group)), as.numeric(length(IgG_hpylori_group)))$conf.int[1]) |> 
+  mutate(upper_bounds = binom.test(as.numeric(sum(IgG_hpylori_group)), as.numeric(length(IgG_hpylori_group)))$conf.int[2]) |> 
+  distinct(age_grouped, lower_bounds, upper_bounds) |> 
+  select(age_grouped, lower_bounds, upper_bounds) |> 
+  arrange(age_grouped) -> df_ci
+
+
+
+t2 <- as.data.frame(prop.table(table(merged_data$age_grouped, merged_data$IgG_hpylori_group), 1)) |> rename(IgG_hpylori_group = Var2, age_grouped = Var1)  
+  
+t0 <- as.data.frame(table(merged_data$age_grouped, merged_data$IgG_hpylori_group)) |> 
+  rename(IgG_hpylori_group = Var2, age_grouped = Var1) 
+  
+t1 <- merge(x = t0, y = t2, by = c("age_grouped", "IgG_hpylori_group"))
+
+t1$Freq.y <- round(t1$Freq.y, 2)*100
+  
+t1 |> 
+  mutate(perc = "%") |> 
+  unite(col = "for_label0", Freq.x, Freq.y, sep = "  \n ") |> 
+  unite(col = "for_label", for_label0, perc, sep = " ")-> t3
+
+
+
+  
+
+
+  
+merged_data |> 
+  filter(!is.na(IgG_hpylori_group)) |> 
+  ggplot(aes (x = age_grouped))+
+  geom_bar(position = "fill", aes(fill = as.factor(IgG_hpylori_group)))+
+  geom_errorbar(data = df_ci, mapping = aes(x = age_grouped, min = lower_bounds, max = upper_bounds), width = 0.5, size   = 1.5, col = "skyblue4")+
+  scale_fill_brewer("Dark2", labels = c("< 10", "> 10"))+
+  geom_label(t3, mapping = aes(x=age_grouped, y = as.numeric(IgG_hpylori_group)^(-10), label = for_label), col = "darkgreen", size = 6 )+
+  ylab(" ")+ xlab("Age groups")+
+  guides(fill = guide_legend("Anti-H.Pylori \n IgG Titer"))+
+  theme_classic(base_size = 20)
+
+ggsave("age_groups_pylori.jpeg", width = 15, height =  10)
+
+  
+
+
+
+
+
+
+
+```
+
+
+# СОздаем переменную ever_smokers (курил ли человек когда-либо)
+```{r}
+
+merged_data$ever_smokers <- as.factor(ifelse(merged_data$smoking == 1| merged_data$smoked_previously == 1, 1, 0))
+
+```
+
+# Строим момодели на основании логистической регрессии
+## Строим intercept-only model
+
+```{r}
+fit0 <- glm(IgG_hpylori_group ~ 1, data = merged_data, family = "binomial")
+
+summary(fit0)
+
+
+
+```
+
+## Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении, 
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, курит человек или нет (есть данные в литературе, и они противоречивые). Строим модель:
+
+```{r}
+fit1 <- glm(IgG_hpylori_group ~ age+under_18 +smoking+ spouse_or_partner+income_level, data = merged_data, family = "binomial")
+summary(fit1)
+
+
+anova( fit1, test = "Chisq")
+
+
+```
+
+# Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении,
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, курил ли человек когда-нибудь (в т.ч. сейчас) человек или нет (есть данные в литературе, и они противоречивые). Строим модель:
+
+```{r}
+
+
+fit2 <- glm(IgG_hpylori_group ~ age+under_18+spouse_or_partner+ever_smokers+income_level, data = merged_data, family = "binomial")
+summary(fit2)
+
+```
+
+# Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении,
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, куриn ли человек сейчас,
+от того, курил ли человек раньше.
+Строим модель:
+
+```{r}
+
+
+fit3 <- glm(IgG_hpylori_group ~ age+under_18+spouse_or_partner+smoked_previously+income_level, data = merged_data, family = "binomial")
+
+summary(fit3)
+
+
+
+
+
+``` 
+
+Сравнениекаждой из моделей с нулевой моделью.
+ 
+```{r}
+anova(fit1, test = "Chisq")
+anova(fit2, test = "Chisq")
+anova(fit3, test = "Chisq")
 
 
 
