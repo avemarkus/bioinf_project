@@ -43,8 +43,19 @@ load("C:/Biostat2021/final_project/bioinf_project/data/wave2/test_results/other_
 phone_survey_data %>% 
   mutate(across(!c("interviewer", "interview_duration", ,"smoking_start_age", "smoking_giveup_age", "age", "cigarettes_per_day", "coffee_cups_per_day", "num_people_home", "error_in_randomization", "interview_date"), function(x) x %>% as.factor())) -> phone_survey
 
-# phone_survey %>% 
-#  str()
+ phone_survey %>% 
+  str()
+
+ 
+ table(merged_data$income_level)
+ 
+#  Can't buy food                   Can't buy clothes                Can't buy appliances 
+#                                  63                                 240                                 508 
+# Can buy appliances but nothing more     Can buy car but not real estate        Can buy real estate and more 
+#                                 465                                 104                                  30 
+ 
+# levels(merged_data$income_level) <- c(1, 2, 3, 4, 5, 6) # изменила обозначнеия для income_level: от 1 до 6, где 1 - самый низкий, 6 - самый высокий
+
 
 ```
 
@@ -107,6 +118,8 @@ ggplot(data = merged_data, aes(x = age_grouped_who))+
 
 ```
 
+
+
 # Смотрим на IgG_hpylori разбитый по age_grouped. 
 ```{r}
 merged_data %>%
@@ -115,12 +128,16 @@ merged_data %>%
   geom_boxplot()+
   geom_jitter(alpha = 0.3)+
   scale_y_log10()+
+  geom_hline(yintercept = 30, col = "darkred", size = 1.5, linetype="dashed")+ # отмечаем порог 30 
+  xlab( "Age groups")+
+  ylab("Anti-H.Pylori IgG titer")+
   theme_classic()
 
 # Визуально кажется, что есть скачок между 31-35 и 36-40.
 
 
 ```
+Исходя из полученной визуализации отмечаем порог в 30 ед/мл. Далее будем использовать этот порого и порого в 10 ед/мл (из литературы).
 
 ```{r}
 hpylori_anova <- aov(IgG_hpylori ~ age_grouped, data = merged_data)
@@ -172,35 +189,35 @@ wilcox.test(IgG_hpylori ~ spouse_or_partner, data = merged_data)
 
 ```
 
-# Разбиваем испытуеммых на 2 группы - IgG к Хеликобактер ниже 10 и выше/равно 10. 
+# Разбиваем испытуеммых на 2 группы - IgG к Хеликобактер ниже и  выше/равно порогу (10 и 30) 
 ```{r}
 
-merged_data$IgG_hpylori_group <- ifelse(merged_data$IgG_hpylori < 10, 0, 1) # 1 - больше 10, 0 - меньше 10. 10 - на основании японской статьи, там тоже был порог в 10
+merged_data$IgG_hpylori_10EIU <- ifelse(merged_data$IgG_hpylori < 10, 0, 1) # 1 - больше 10, 0 - меньше 10. 10 - на основании японской статьи, там тоже был порог в 10
 
+merged_data$IgG_hpylori_30EIU <- ifelse(merged_data$IgG_hpylori < 30, 0, 1) # 1 - больше 30, 0 - меньше 30. 
 
 ```
 
-## барплот - доработать легенду 
-
+## Доля и количество испытуемых с повышенным титром IgG к H.Pylori в разных возрастных группах для порога 10
 ```{r, fig.height = 10, fig.width=15}
 
 merged_data |> 
-  filter(!is.na(IgG_hpylori_group)) |> 
+  filter(!is.na(IgG_hpylori_10EIU)) |> 
   group_by(age_grouped) |> 
-  mutate(lower_bounds = binom.test(as.numeric(sum(IgG_hpylori_group)), as.numeric(length(IgG_hpylori_group)))$conf.int[1]) |> 
-  mutate(upper_bounds = binom.test(as.numeric(sum(IgG_hpylori_group)), as.numeric(length(IgG_hpylori_group)))$conf.int[2]) |> 
+  mutate(lower_bounds = binom.test(as.numeric(sum(IgG_hpylori_10EIU)), as.numeric(length(IgG_hpylori_10EIU)))$conf.int[1]) |> 
+  mutate(upper_bounds = binom.test(as.numeric(sum(IgG_hpylori_10EIU)), as.numeric(length(IgG_hpylori_10EIU)))$conf.int[2]) |> 
   distinct(age_grouped, lower_bounds, upper_bounds) |> 
   select(age_grouped, lower_bounds, upper_bounds) |> 
   arrange(age_grouped) -> df_ci
 
 
 
-t2 <- as.data.frame(prop.table(table(merged_data$age_grouped, merged_data$IgG_hpylori_group), 1)) |> rename(IgG_hpylori_group = Var2, age_grouped = Var1)  
+t2 <- as.data.frame(prop.table(table(merged_data$age_grouped, merged_data$IgG_hpylori_10EIU), 1)) |> rename(IgG_hpylori_10EIU = Var2, age_grouped = Var1)  
   
-t0 <- as.data.frame(table(merged_data$age_grouped, merged_data$IgG_hpylori_group)) |> 
-  rename(IgG_hpylori_group = Var2, age_grouped = Var1) 
+t0 <- as.data.frame(table(merged_data$age_grouped, merged_data$IgG_hpylori_10EIU)) |> 
+  rename(IgG_hpylori_10EIU = Var2, age_grouped = Var1) 
   
-t1 <- merge(x = t0, y = t2, by = c("age_grouped", "IgG_hpylori_group"))
+t1 <- merge(x = t0, y = t2, by = c("age_grouped", "IgG_hpylori_10EIU"))
 
 t1$Freq.y <- round(t1$Freq.y, 2)*100
   
@@ -216,17 +233,73 @@ t1 |>
 
   
 merged_data |> 
-  filter(!is.na(IgG_hpylori_group)) |> 
+  filter(!is.na(IgG_hpylori_10EIU)) |> 
   ggplot(aes (x = age_grouped))+
-  geom_bar(position = "fill", aes(fill = as.factor(IgG_hpylori_group)))+
+  geom_bar(position = "fill", aes(fill = as.factor(IgG_hpylori_10EIU)))+
   geom_errorbar(data = df_ci, mapping = aes(x = age_grouped, min = lower_bounds, max = upper_bounds), width = 0.5, size   = 1.5, col = "skyblue4")+
   scale_fill_brewer("Dark2", labels = c("< 10", "> 10"))+
-  geom_label(t3, mapping = aes(x=age_grouped, y = as.numeric(IgG_hpylori_group)^(-10), label = for_label), col = "darkgreen", size = 6 )+
+  geom_label(t3, mapping = aes(x=age_grouped, y = as.numeric(IgG_hpylori_10EIU)^(-10), label = for_label), col = "darkgreen", size = 6 )+
   ylab(" ")+ xlab("Age groups")+
   guides(fill = guide_legend("Anti-H.Pylori \n IgG Titer"))+
   theme_classic(base_size = 20)
 
-ggsave("age_groups_pylori.jpeg", width = 15, height =  10)
+# ggsave("age_groups_pylori.jpeg", width = 15, height =  10)
+
+  
+
+
+
+
+
+
+
+```
+## Доля и количество испытуемых с повышенным титром IgG к H.Pylori в разных возрастных группах для порога 30
+```{r, fig.height = 10, fig.width=15}
+
+merged_data |> 
+  filter(!is.na(IgG_hpylori_30EIU)) |> 
+  group_by(age_grouped) |> 
+  mutate(lower_bounds = binom.test(as.numeric(sum(IgG_hpylori_30EIU)), as.numeric(length(IgG_hpylori_30EIU)))$conf.int[1]) |> 
+  mutate(upper_bounds = binom.test(as.numeric(sum(IgG_hpylori_30EIU)), as.numeric(length(IgG_hpylori_30EIU)))$conf.int[2]) |> 
+  distinct(age_grouped, lower_bounds, upper_bounds) |> 
+  select(age_grouped, lower_bounds, upper_bounds) |> 
+  arrange(age_grouped) -> df_ci
+
+
+
+t2 <- as.data.frame(prop.table(table(merged_data$age_grouped, merged_data$IgG_hpylori_30EIU), 1)) |> rename(IgG_hpylori_30EIU = Var2, age_grouped = Var1)  
+  
+t0 <- as.data.frame(table(merged_data$age_grouped, merged_data$IgG_hpylori_30EIU)) |> 
+  rename(IgG_hpylori_30EIU = Var2, age_grouped = Var1) 
+  
+t1 <- merge(x = t0, y = t2, by = c("age_grouped", "IgG_hpylori_30EIU"))
+
+t1$Freq.y <- round(t1$Freq.y, 2)*100
+  
+t1 |> 
+  mutate(perc = "%") |> 
+  unite(col = "for_label0", Freq.x, Freq.y, sep = "  \n ") |> 
+  unite(col = "for_label", for_label0, perc, sep = " ")-> t3
+
+
+
+  
+
+
+  
+merged_data |> 
+  filter(!is.na(IgG_hpylori_30EIU)) |> 
+  ggplot(aes (x = age_grouped))+
+  geom_bar(position = "fill", aes(fill = as.factor(IgG_hpylori_30EIU)))+
+  geom_errorbar(data = df_ci, mapping = aes(x = age_grouped, min = lower_bounds, max = upper_bounds), width = 0.5, size   = 1.5, col = "skyblue4")+
+  scale_fill_brewer("Dark2", labels = c("< 30", "> 30"))+
+  geom_label(t3, mapping = aes(x=age_grouped, y = as.numeric(IgG_hpylori_30EIU)^(-10), label = for_label), col = "darkgreen", size = 6 )+
+  ylab(" ")+ xlab("Age groups")+
+  guides(fill = guide_legend("Anti-H.Pylori \n IgG Titer"))+
+  theme_classic(base_size = 20)
+
+# ggsave("age_groups_pylori.jpeg", width = 15, height =  10)
 
   
 
@@ -238,7 +311,6 @@ ggsave("age_groups_pylori.jpeg", width = 15, height =  10)
 
 ```
 
-
 # СОздаем переменную ever_smokers (курил ли человек когда-либо)
 ```{r}
 
@@ -247,18 +319,20 @@ merged_data$ever_smokers <- as.factor(ifelse(merged_data$smoking == 1| merged_da
 ```
 
 # Строим момодели на основании логистической регрессии
+
+Для порога 10:
 ## Строим intercept-only model
 
 ```{r}
-fit0 <- glm(IgG_hpylori_group ~ 1, data = merged_data, family = "binomial")
+fit10_0 <- glm(IgG_hpylori_10EIU ~ 1, data = merged_data, family = "binomial")
 
-summary(fit0)
+summary(fit10_0)
 
 
 
 ```
 
-## Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+## Предполагаем, что титр IgG к H.Pylori может зависеть от различных факторов:
 от возраста истытуемых, 
 от наличия детей в окружении, 
 от наличия супруга/ партнера,
@@ -266,11 +340,11 @@ summary(fit0)
 от того, курит человек или нет (есть данные в литературе, и они противоречивые). Строим модель:
 
 ```{r}
-fit1 <- glm(IgG_hpylori_group ~ age+under_18 +smoking+ spouse_or_partner+income_level, data = merged_data, family = "binomial")
-summary(fit1)
+fit10_1 <- glm(IgG_hpylori_10EIU ~ age+under_18 +smoking+ spouse_or_partner+income_level, data = merged_data, family = "binomial")
+summary(fit10_1)
 
 
-anova( fit1, test = "Chisq")
+summary(glm(IgG_hpylori_10EIU ~ age+under_18 +smoking+ spouse_or_partner+income_level+age:spouse_or_partner+ age:under_18, data = merged_data, family = "binomial")) # модель с учетом взаимодействий age:spouse_or_partner, age:under_18
 
 
 ```
@@ -285,8 +359,10 @@ anova( fit1, test = "Chisq")
 ```{r}
 
 
-fit2 <- glm(IgG_hpylori_group ~ age+under_18+spouse_or_partner+ever_smokers+income_level, data = merged_data, family = "binomial")
-summary(fit2)
+fit10_2 <- glm(IgG_hpylori_10EIU ~ age+under_18+spouse_or_partner+ever_smokers+income_level, data = merged_data, family = "binomial")
+summary(fit10_2)
+
+summary(glm(IgG_hpylori_10EIU ~ age+under_18+spouse_or_partner+ever_smokers+income_level + age:spouse_or_partner+ age:under_18, data = merged_data, family = "binomial")) # модель с учетом взаимодействий age:spouse_or_partner, age:under_18
 
 ```
 
@@ -295,31 +371,239 @@ summary(fit2)
 от наличия детей в окружении,
 от наличия супруга/ партнера,
 от уровня дохода, 
-от того, куриn ли человек сейчас,
 от того, курил ли человек раньше.
 Строим модель:
 
 ```{r}
 
 
-fit3 <- glm(IgG_hpylori_group ~ age+under_18+spouse_or_partner+smoked_previously+income_level, data = merged_data, family = "binomial")
-
-summary(fit3)
+# fit10_3 <- glm(IgG_hpylori_10EIU ~ age+under_18+spouse_or_partner+smoked_previously+income_level, data = merged_data, family = "binomial")
+# 
+# summary(fit10_3)
 
 
 
 
 
 ``` 
+Fit3 не очень разумна, не учитывает нынешних курильщиков. 
 
-Сравнениекаждой из моделей с нулевой моделью.
+
+Сравнение каждой из моделей с нулевой моделью.
  
 ```{r}
-anova(fit1, test = "Chisq")
-anova(fit2, test = "Chisq")
-anova(fit3, test = "Chisq")
+anova(fit10_1, test = "Chisq")
+anova(fit10_2, test = "Chisq")
+
+#anova(fit3, test = "Chisq")
 
 
 
 
 ```
+
+
+
+Для порога 30:
+
+## Строим intercept-only model
+
+```{r}
+fit30_0 <- glm(IgG_hpylori_30EIU ~ 1, data = merged_data, family = "binomial")
+
+summary(fit30_0)
+
+
+
+```
+
+## Предполагаем, что титр IgG к H.Pylori может зависеть от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении, 
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, курит человек или нет (есть данные в литературе, и они противоречивые). Строим модель:
+
+```{r}
+fit30_1 <- glm(IgG_hpylori_30EIU ~ age+under_18 +smoking+ spouse_or_partner+income_level, data = merged_data, family = "binomial")
+summary(fit30_1)
+
+
+fit30_int_1 <- glm(IgG_hpylori_30EIU ~ age+under_18 +smoking+ spouse_or_partner+income_level+age:spouse_or_partner+ age:under_18, data = merged_data, family = "binomial") # модель с учетом взаимодействий age:spouse_or_partner, age:under_18
+summary(fit30_int_1)
+
+anova(fit30_int_1, test = "Chisq")
+
+```
+
+# Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении,
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, курил ли человек когда-нибудь (в т.ч. сейчас) человек или нет (есть данные в литературе, и они противоречивые). Строим модель:
+
+```{r}
+
+
+fit30_2 <- glm(IgG_hpylori_30EIU ~ age+under_18+spouse_or_partner+ever_smokers+income_level, data = merged_data, family = "binomial")
+summary(fit30_2)
+
+
+fit30_int_2 <- glm(IgG_hpylori_30EIU ~ age+under_18+spouse_or_partner+ever_smokers+income_level+age:spouse_or_partner+ age:under_18, data = merged_data, family = "binomial")
+summary(fit30_int_2)
+```
+
+# Предполагаем, что титр IgG к H.Pylori может зависить от различных факторов:
+от возраста истытуемых, 
+от наличия детей в окружении,
+от наличия супруга/ партнера,
+от уровня дохода, 
+от того, курил ли человек раньше.
+Строим модель:
+
+```{r}
+
+
+fit30_3 <- glm(IgG_hpylori_30EIU ~ age+under_18+spouse_or_partner+smoked_previously+income_level, data = merged_data, family = "binomial")
+
+summary(fit30_3)
+
+
+
+
+
+``` 
+Fit3 не очень разумна, не учитывает нынешних курильщиков. 
+
+
+Сравнение каждой из моделей с нулевой моделью.
+ 
+```{r}
+anova(fit10_1, test = "Chisq")
+anova(fit10_2, test = "Chisq")
+
+anova(fit30_1, test = "Chisq")
+anova(fit30_2, test = "Chisq")
+
+anova(fit30_int_1,test = "Chisq" )
+anova(fit30_int_2, test = "Chisq")
+
+
+
+```
+
+
+```{r}
+
+tab_model(fit10_1, fit10_2, fit30_1, fit30_2, show.obs = T, show.r2 = T,
+          auto.label = FALSE,
+          pred.labels = c("intercept", 
+                          "age",
+                          "having children",
+                          "smoking now",
+                          "having spouse or partner",
+                          "income level: Can't buy clothes",
+                          "income level: Can't buy appliances",
+                          "income level: Can buy appliances but nothing more",
+                          "income level: Can buy car but not real estate",
+                          "income level: Can buy real estate and more",
+                          "smoked ever, including now"),
+          dv.labels = c("Model 1 (10 EIU)", "Model 2 (10 EIU)", "Model 1 (30 EIU)", "Model 2 (30 EIU)" ),
+          file = "models.html")
+
+webshot("models.html", "models.png")
+
+
+#  Can't buy food                   Can't buy clothes                Can't buy appliances 
+#                                  63                                 240                                 508 
+# Can buy appliances but nothing more     Can buy car but not real estate        Can buy real estate and more 
+#                                 465                                 104                                  30 
+
+
+```
+
+
+
+
+Строим более глубокие модели со взаимодействиями (возраст и наличие супруга, возраст и наличие детей).
+
+
+для порога 10:
+
+fit10_int_1, fit10_int_2, fit10_int_3 - модели, которые учитывают сожителей (описывают меньше дисперсии)
+
+```{r}
+fit10_int_1 <- glm(IgG_hpylori_10EIU ~ age *spouse_or_partner, data = merged_data, family = "binomial")
+summary(fit10_int_1)
+
+
+```
+
+
+```{r}
+fit10_int_2 <- glm(IgG_hpylori_10EIU ~ age*under_18 , data = merged_data, family = "binomial")
+summary(fit10_int_2)
+
+
+```
+
+```{r}
+fit10_int_3 <- glm(IgG_hpylori_10EIU ~ age*under_18*spouse_or_partner , data = merged_data, family = "binomial")
+summary(fit10_int_3)
+
+
+
+
+```
+
+
+```{r}
+tab_model(fit10_int_1, fit10_int_2, fit10_int_3)
+
+
+
+
+```
+
+Если добавить в эти три модели курение (без взаимодействия):
+доля объясняемой ими дисперсии увеличивается, но не сильно. Все еще меньше - чем в изначальной модели.
+
+```{r}
+fit10_int_1 <- glm(IgG_hpylori_10EIU ~ age *spouse_or_partner * smoking, data = merged_data, family = "binomial")
+summary(fit10_int_1)
+
+
+```
+
+
+```{r}
+fit10_int_2 <- glm(IgG_hpylori_10EIU ~ age*under_18  * smoking, data = merged_data, family = "binomial")
+summary(fit10_int_2)
+
+
+```
+
+```{r}
+fit10_int_3 <- glm(IgG_hpylori_10EIU ~ age*under_18*spouse_or_partner * smoking, data = merged_data, family = "binomial")
+summary(fit10_int_3)
+
+
+
+
+```
+
+```{r}
+# tab_model(fit10_int_1, fit10_int_2, fit10_int_3)
+
+
+
+
+```
+
+```{r}
+it10_int_3 <- glm(IgG_hpylori_10EIU ~ age*under_18*spouse_or_partner* smoking, data = merged_data, family = "binomial")
+summary(fit10_int_3)
+
+```
+
