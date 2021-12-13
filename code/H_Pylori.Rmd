@@ -15,6 +15,7 @@ library(car)
 
 library(tidyverse)
 library(broom)
+library(broom.helpers)
 library(splines)
 library(GGally)
 library(sjPlot)
@@ -122,7 +123,7 @@ merged_data %>%
   ylab("Anti-H.Pylori IgG titer")+
   theme_classic(base_size = 20)
 
-ggsave("IgG_hpylori_cutoff.jpeg", width = 15, height =  10)
+#ggsave("IgG_hpylori_cutoff.jpeg", width = 15, height =  10)
 # Визуально кажется, что есть скачок между 31-35 и 36-40.
 
 
@@ -505,5 +506,21 @@ summary(fit10_int_3)
 
 ```
 
+Форест-плот для визуализации модели
+```{r}
+
+
+ggcoef_model(fit10_2, exponentiate = TRUE, 
+             intercept = TRUE,
+             variable_labels = c(
+               age = "Age",
+               under_18 = "Have children",
+               spouse_or_partner = "Live with spouse or partner",
+               ever_smokers = "Smoked ever, including now",
+               income_level = "Income level"
+             )
+              )
+# ggsave("forest_plot_fit10_2.jpeg")
+```
 
 
