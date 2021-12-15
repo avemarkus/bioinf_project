@@ -17,7 +17,6 @@ library(tidyverse)
 library(psych)
 library(flextable)
 library(broom)
-library(plotly)
 library(RColorBrewer)
 library(rms)
 library(ROCR)
@@ -42,137 +41,136 @@ library(ranger)
 
 ```{r}
 
-load("C:/Users/Fedor Logvin/Desktop/ДЗ_Биостат/VKR/My project/Data/phone_survey_data.rdata")
+load("C:/Users/Fedor Logvin/Desktop/ДЗ_Биостат/VKR/bioinf_project/data/wave2/phone_survey/phone_survey_data.rdata")
 
 ```
 
 ```{r}
-#human <- subset_1 %>%
-  #subset(ID == "00e9c1e4378c980a")
-```
 
-```{r}
-
-subset_3 <- phone_survey_data[, c(1, 4:6, 11, 12, 28, 41:44)]
-subset_3$num_people_home[subset_3$lives_alone == 1] <- 0
-subset_3$under_18[subset_3$lives_alone == 1] <- 0
-subset_3$over_65[subset_3$lives_alone == 1] <- 0
-subset_3 <- na.omit(subset_3)
-subset_3 <- subset_3[subset_3$num_people_home < 6]
-
-subset_3 <- as.data.frame(apply(subset_3[, c(2, 4:10)], MARGIN = 2, as.factor))
+subset_1 <- phone_survey_data[, c(1, 4:6, 11, 12, 28, 41:44)]
+subset_1$num_people_home[subset_1$lives_alone == 1] <- 0
+subset_1$under_18[subset_1$lives_alone == 1] <- 0
+subset_1$over_65[subset_1$lives_alone == 1] <- 0
+subset_1 <- na.omit(subset_1)
+subset_1 <- subset_1[subset_1$num_people_home < 6]
 
 ```
 
 # Маски и сожители
 ```{r, fig.height=4, fig.width= 11}
 
-ggplot(subset_3[num_people_home != c("4", "5")], aes(x = street_used_mask))+
+ggplot(subset_1, aes(x = street_used_mask))+
     geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
     facet_grid(.~ num_people_home)+
     scale_x_continuous(breaks = 0:2, label = c("Не ходили", "Носят", "Не носят"))+
     scale_y_continuous(breaks = c(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6))+
     xlab("Ношение маски на улице (ось Х) по числу сожителей (группы)")+
     ylab("%")
-ggsave("ношение маски по сожителям.pdf")
 
-subset_3 %>%
+subset_1 %>%
   count(num_people_home)
 
-chisq.test(table(mask = subset_3$street_used_mask, members = subset_3$num_people_home))
+chisq.test(table(mask = subset_1$street_used_mask, members = subset_1$num_people_home))
 
 ```
 
 # Мытье рук и сопроживание
 ```{r}
 
-chisq.test(table(housemembers = subset_3$lives_alone, wash = subset_3$washing_hands_more))
+chisq.test(table(housemembers = subset_1$lives_alone, wash = subset_1$washing_hands_more))
+
+ggplot(subset_1, aes(x = washing_hands_more))+
+    geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+    facet_grid(.~ num_people_home)+
+    scale_x_continuous(breaks = 0:1, label = c("Не чаще", "Чаще"))+
+    scale_y_continuous(breaks = c(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6))+
+    xlab("Учащение мытья рук (ось Х) по числу сожителей (группы)")+
+    ylab("%")
 
 ```
 
 #Влияет ли старость проживающего?
 ```{r, fig.height=5}
 
-ggplot(subset_3[num_people_home != 0], aes(x = street_used_mask))+
+ggplot(subset_1[subset_1$num_people_home != "0"], aes(x = street_used_mask))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
   facet_grid(.~ over_65)
 
-ggplot(subset_3[num_people_home != 0:1], aes(x = street_used_mask))+
+ggplot(subset_1[num_people_home != 0:1], aes(x = street_used_mask))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
-  facet_grid(under_18~ over_65)+
+  facet_grid(under_18 ~ over_65)+
   scale_x_continuous(breaks = 0:2, labels = c("Не ходили", "Носят", "Не носят"))
 
-chisq.test(table(partner = subset_3$over_65, mask = subset_3$street_used_mask))
+chisq.test(table(partner = subset_1$over_65, mask = subset_1$street_used_mask))
 
 ```
-# Влияют ли молодые проживающие?
 
+# Влияют ли молодые проживающие?
 ```{r}
 
-chisq.test(table(partner = subset_3$under_18, mask = subset_3$street_used_mask))
+chisq.test(table(partner = subset_1$under_18, mask = subset_1$street_used_mask))
 
-ggplot(subset_3[num_people_home == 2 & over_65 == 0], aes(x = street_used_mask))+
+ggplot(subset_1[subset_1$num_people_home == 2 & over_65 == 0], aes(x = street_used_mask))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
   facet_grid(.~ under_18)
 
-table(partner = subset_3$under_18, people = subset_3$num_people_home)
-table(partner = subset_3$over_65, people = subset_3$num_people_home)
-table(children = subset_3$under_18[subset_3$num_people_home != 0:1], parents = subset_3$over_65[subset_3$num_people_home != 0:1])
+table(partner = subset_1$under_18, people = subset_1$num_people_home)
+table(partner = subset_1$over_65, people = subset_1$num_people_home)
+table(children = subset_1$under_18[subset_1$num_people_home != 0:1], parents = subset_1$over_65[subset_1$num_people_home != 0:1])
 
 ```
 
+#Число сожителей младше 18/старше 65
 ```{r}
 
-ggplot(subset_3[num_people_home != 0], aes(x = nosymptoms_past))+
+ggplot (subset_1[num_people_home != 0], aes(x = num_people_home, fill = factor(under_18)))+
+  geom_bar(position = 'fill')
+
+ggplot (subset_1[num_people_home != 0], aes(x = num_people_home, fill = factor(over_65)))+
+  geom_bar(position = 'fill')
+
+```
+
+#Отсутствие симптомов
+```{r}
+
+ggplot(subset_1[num_people_home != 0], aes(x = nosymptoms_past))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
   facet_grid(.~ under_18)+
   scale_x_continuous(breaks = 0:1)
 
-```
-
-```{r}
-
-ggplot (subset_3[num_people_home != 0], aes(x = num_people_home, fill = factor(under_18)))+
-  geom_bar(position = 'fill')
-
-ggplot (subset_3[num_people_home != 0], aes(x = num_people_home, fill = factor(over_65)))+
-  geom_bar(position = 'fill')
+chisq.test(table(housemembers = subset_1$num_people_home, healthy = subset_1$nosymptoms_past))
 
 ```
 
 ```{r}
 
-chisq.test(table(housemembers = subset_3$num_people_home, healthy = subset_3$nosymptoms_past))
-
-```
-
-```{r}
-
-ggplot(subset_3, aes(x = nosymptoms_past))+
+ggplot(subset_1, aes(x = nosymptoms_past))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
   facet_grid(.~ num_people_home)+
   scale_x_continuous(breaks = 0:1)+
-  xlab("Absence of symptoms (X axis) by housemembers (groups)")+
-  ylab("% by group")
+  xlab("Отсутствие симтомов (ось Х) при разном числе сожителей (группы)")+
+  ylab("%")
 
 ```
 
 ```{r, fig.height=12, fig.width=5}
 
-ggplot(subset_3, aes(x = street_used_mask))+
+ggplot(subset_1, aes(x = street_used_mask))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
   facet_grid(num_people_home ~ nosymptoms_past)+
   scale_x_continuous(breaks = 0:2)
-ggsave("Plots/Безсимптомов_маски_сожители(гист).pdf")
+
 
 ```
 
 ```{r}
 
-chisq.test(table(mask = subset_3$street_used_mask, healthy = subset_3$nosymptoms_past ))
+chisq.test(table(mask = subset_1$street_used_mask, healthy = subset_1$nosymptoms_past ))
 
 ```
 
+#Symptoms score
 ```{r, fig.height=7}
 
 fa_df <- phone_survey_data[, c(1, 6, 22:28, 41)]
@@ -195,23 +193,19 @@ ggplot(fa_df, aes(x = symptoms_score))+
   geom_histogram(aes(y = ..density..), binwidth = 1,col = 'black', fill = 'green')+
   facet_grid(.~lives_alone)
 
-glm (symptoms_score ~ lives_alone*age, fa_df, family = poisson(link = "log")) %>%
-  broom::tidy (exponentiate = T)
-
 ```
 
 #Влияние возраста проживающих
 ```{r, fig.height=8}
 
-anova <- aov(data = subset_3, street_used_mask ~ num_people_home*under_18*over_65)
+anova <- aov(data = subset_1, street_used_mask ~ num_people_home + under_18 + over_65 + num_people_home:under_18)
 summary(anova)
 
-plot(TukeyHSD(anova, which = "num_people_home"))
 
-ggplot(subset_3[subset_3$under_18 == 1 & subset_3$over_65 == 1], aes(x = street_used_mask))+
+ggplot(subset_1[subset_1$under_18 == 1 & subset_1$over_65 == 1], aes(x = street_used_mask))+
   geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")
 
-subset_3 %>%
+subset_1 %>%
   count(under_18 == 1 & over_65 == 1)
 
 ```
@@ -263,15 +257,7 @@ ggplot(subset_age_members_defense_sympt,
 ```
 
 # Regression
-
 ```{r,fig.height=6, fig.width=10}
-
-# Linear
-
-fit <- lm(data = subset_3, street_used_mask ~ age + num_people_home)
-
-summary(fit)
-plot(fit)
 
 #Logit
 
@@ -283,13 +269,9 @@ logit_subset <- na.omit(logit_subset)
 logit_subset <- logit_subset[logit_subset$num_people_home < 6]
 logit_subset <- logit_subset[logit_subset$street_used_mask != 0]
 logit_subset$street_used_mask <-logit_subset$street_used_mask - 1
-logit_subset$num_people_home <-  as.factor(logit_subset$num_people_home)
-logit_subset$street_used_mask <-  as.factor(logit_subset$street_used_mask)
-logit_subset$under_18 <-  as.factor(logit_subset$under_18)
-logit_subset$over_65 <- as.factor(logit_subset$over_65)
-logit_subset$male <- as.factor(logit_subset$male)
 
-
+logit_subset %>%
+  mutate(across(.cols = c(street_used_mask, under_18, over_65, male), .fns = as.factor)) -> logit_subset
 
 glimpse(logit_subset)
 
@@ -327,17 +309,17 @@ remove(temp_df)
 
 #Visualization
 
-predicted <- data.frame(street_used_mask_pred = predict(fit, subset_3), age = subset_3$age)
+predicted <- data.frame(street_used_mask_pred = predict(fit, subset_1), age = subset_1$age)
 
-p <- plot_ly(x = subset_3$age, 
-        y = subset_3$street_used_mask, 
-        z = subset_3$num_people_home, 
+p <- plot_ly(x = subset_1$age, 
+        y = subset_1$street_used_mask, 
+        z = subset_1$num_people_home, 
         type = "scatter3d", 
         mode = "markers", 
         color = "spectral")
 
 ggplotly(
-  ggplot(subset_3, aes(x = age, y = num_people_home, col = factor(street_used_mask)))+
+  ggplot(subset_1, aes(x = age, y = num_people_home, col = factor(street_used_mask)))+
   geom_point()+
   geom_jitter()+
   scale_y_continuous(breaks = 0:5)
@@ -352,16 +334,18 @@ ggplot(logit_subset, aes(x = age))+
 ## Data
 ```{r}
 
-subset_3 <- subset_3[subset_3$street_used_mask != 0]
-subset_3$street_used_mask[subset_3$street_used_mask == 2] <- 0
-subset_3$street_used_mask <- as.factor(subset_3$street_used_mask)
-subset_3$male <- as.factor(subset_3$male)
-subset_3$num_people_home <- as.factor(subset_3$num_people_home)
-subset_3$under_18 <- as.factor(subset_3$under_18)
-subset_3$over_65 <- as.factor(subset_3$over_65)
+subset_1 <- subset_1[subset_1$street_used_mask != 0]
+subset_1$street_used_mask[subset_1$street_used_mask == 2] <- 0
+subset_1$street_used_mask <- as.factor(subset_1$street_used_mask)
+subset_1$male <- as.factor(subset_1$male)
+subset_1$num_people_home <- as.factor(subset_1$num_people_home)
+subset_1$under_18 <- as.factor(subset_1$under_18)
+subset_1$over_65 <- as.factor(subset_1$over_65)
+
+subset_1$age_group <- cut(subset_1$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
 
 
-splitted_data <- initial_split(subset_3, prop = 0.8, strata = "street_used_mask")
+splitted_data <- initial_split(subset_1, prop = 0.8, strata = "street_used_mask")
 train_data <- splitted_data %>% training()
 test_data <-  splitted_data %>% testing()
 
@@ -460,20 +444,21 @@ Test$street_used_mask <- as.numeric(Test$street_used_mask)
 plot(ROCR::performance(ROCR::prediction(Test$.pred_class, Test$street_used_mask), "tpr", "fpr"), colorize = T)
 
 ```
+
 # CHAID (mask ~)
 ```{r}
 
-subset_3$age_group <- cut(subset_3$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
+subset_1$age_group <- cut(subset_1$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
 
-subset_3$nosymptoms_past <- as.factor(subset_3$nosymptoms_past)
-subset_3$num_people_home <- as.ordered(subset_3$num_people_home)
+subset_1$nosymptoms_past <- as.factor(subset_1$nosymptoms_past)
+subset_1$num_people_home <- as.ordered(subset_1$num_people_home)
 
 chaid_res <- chaid(street_used_mask ~ male + district + nosymptoms_past + num_people_home + over_65 + under_18 + age_group, 
-                   data = subset_3)
+                   data = subset_1)
 
 plot (chaid_res,gp = gpar(fontsize = 9))
 
-summary(subset_3$age_group)
+summary(subset_1$age_group)
 
 ```
 
@@ -481,7 +466,7 @@ summary(subset_3$age_group)
 ```{r}
 # Ages 26-30
 
-Clust1 <- subset_3[subset_3$age_group == "18-25"]
+Clust1 <- subset_1[subset_1$age_group == "18-25"]
 
 prop.table(table(mask = Clust1$street_used_mask, youngsters = Clust1$under_18), margin = 2)
 
@@ -495,7 +480,7 @@ ggplot(Clust1, aes(x = as.numeric(under_18), fill = street_used_mask))+
 ```{r}
 #Ages 31-35
 
-Clust2 <- subset_3[subset_3$age_group == "31-35"]
+Clust2 <- subset_1[subset_1$age_group == "31-35"]
 
 prop.table(table(mask = Clust2$street_used_mask, youngsters = Clust2$under_18), margin = 2)
 
@@ -509,7 +494,7 @@ ggplot(Clust2, aes(x = as.numeric(under_18), fill = street_used_mask))+
 ```{r}
 # With youngsters, ages 31-35
 
-Clust3 <- subset_3[subset_3$age_group == "31-35" & subset_3$under_18 == "1"]
+Clust3 <- subset_1[subset_1$age_group == "31-35" & subset_1$under_18 == "1"]
 
 prop.table(table(mask = Clust3$street_used_mask, symptoms = Clust3$nosymptoms_past), margin = 2)
 
@@ -523,7 +508,7 @@ ggplot(Clust3, aes(x = as.numeric(nosymptoms_past), fill = street_used_mask))+
 ```{r}
 #Ages 50+
 
-Clust4 <- subset_3[subset_3$age > 50 ]
+Clust4 <- subset_1[subset_1$age > 50 ]
 
 prop.table(table(mask = Clust4$street_used_mask, males = Clust4$male), margin = 2)
 
@@ -536,7 +521,7 @@ ggplot(Clust4, aes(x = as.numeric(male), fill = street_used_mask))+
 ##Cluster 1
 ```{r}
 
-Clust5 <- subset_3[, 4:5]
+Clust5 <- subset_1[, 4:5]
 Clust5$age_group <- as.ordered(cut(Clust5$age, breaks = c(17, 25, 30, 35, 50, 95), labels = 0:4))
 
 ggplot(Clust5, aes(x = as.numeric(age_group), fill = street_used_mask))+
@@ -548,24 +533,24 @@ ggplot(Clust5, aes(x = as.numeric(age_group), fill = street_used_mask))+
 ## Data preparation
 ```{r}
 
-subset_4 <- phone_survey_data[, c(1, 4:8, 11, 12, 22:28, 42:46)]
-subset_4$num_people_home[is.na(subset_4$num_people_home)] <- 0
-subset_4$under_18[is.na(subset_4$under_18)] <- 0
-subset_4$over_65[is.na(subset_4$over_65)] <- 0
-subset_4$spouse_or_partner[is.na(subset_4$spouse_or_partner)] <- 0
-subset_4$other_people[is.na(subset_4$other_people)] <- 0
-subset_4 <- na.omit(subset_4)
-subset_4$age_group <- cut(subset_4$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
-subset_4 <- subset_4[subset_4$num_people_home < 6]
-subset_4[, -4] %>%
-  mutate(across(.cols = is.numeric, .fns = as.factor)) -> subset_4
+subset_2 <- phone_survey_data[, c(1, 4:8, 11, 12, 22:28, 42:46)]
+subset_2$num_people_home[is.na(subset_2$num_people_home)] <- 0
+subset_2$under_18[is.na(subset_2$under_18)] <- 0
+subset_2$over_65[is.na(subset_2$over_65)] <- 0
+subset_2$spouse_or_partner[is.na(subset_2$spouse_or_partner)] <- 0
+subset_2$other_people[is.na(subset_2$other_people)] <- 0
+subset_2 <- na.omit(subset_2)
+subset_2$age_group <- cut(subset_2$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
+subset_2 <- subset_2[subset_2$num_people_home < 6]
+subset_2[, -4] %>%
+  mutate(across(.cols = is.numeric, .fns = as.factor)) -> subset_2
 
 ```
 
 ##CHAID func
 ```{r}
 
-chaid_res_2 <- chaid(nosymptoms_past ~ ., data = subset_4[, -c(1, 8:13)], control = chaid_control(minbucket = 150, minprob = 0.2))
+chaid_res_2 <- chaid(nosymptoms_past ~ ., data = subset_2[, -c(1, 8:13)], control = chaid_control(minbucket = 150, minprob = 0.2))
 
 plot(chaid_res_2, gp = gpar(fontsize = 8))
 
@@ -575,7 +560,7 @@ plot(chaid_res_2, gp = gpar(fontsize = 8))
 ##Cluster 1
 ```{r}
 
-Clust6 <- subset_4[, c(14, 20)]
+Clust6 <- subset_2[, c(14, 20)]
 Clust6$age_group <- as.character(Clust6$age_group)
 
 Clust6$age_group[Clust6$age_group == "18-25" | Clust6$age_group == "26-30" | Clust6$age_group == "31-35"] <-  "0"
@@ -591,7 +576,7 @@ ggplot(Clust6, aes(x = as.numeric(age_group), fill = nosymptoms_past))+
 ##Cluster 2
 ```{r}
 
-Clust7 <-  subset_4[subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35"]
+Clust7 <-  subset_2[subset_2$age_group == "18-25"| subset_2$age_group == "26-30" | subset_2$age_group == "31-35"]
 Clust7 <- Clust7[, c(4, 14)]
 
 ggplot(Clust7, aes(x = as.numeric(travelled), fill = nosymptoms_past))+
@@ -603,7 +588,7 @@ ggplot(Clust7, aes(x = as.numeric(travelled), fill = nosymptoms_past))+
 ##Cluster 3
 ```{r}
 
-Clust8 <-  subset_4[(subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35") & subset_4$travelled == "0"]
+Clust8 <-  subset_2[(subset_2$age_group == "18-25"| subset_2$age_group == "26-30" | subset_2$age_group == "31-35") & subset_2$travelled == "0"]
 Clust8 <- Clust8[, c(14, 17)]
 
 ggplot(Clust8, aes(x = as.numeric(over_65), fill = nosymptoms_past))+
@@ -615,7 +600,7 @@ ggplot(Clust8, aes(x = as.numeric(over_65), fill = nosymptoms_past))+
 ##CLuster 4
 ```{r}
 
-Clust9 <-  subset_4[(subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35") & subset_4$travelled == "0" & subset_4$over_65 == "0"]
+Clust9 <-  subset_2[(subset_2$age_group == "18-25"| subset_2$age_group == "26-30" | subset_2$age_group == "31-35") & subset_2$travelled == "0" & subset_2$over_65 == "0"]
 Clust9 <- Clust9[, c(5, 14)]
 
 ggplot(Clust9, aes(x = as.numeric(used_transport), fill = nosymptoms_past))+
@@ -624,38 +609,38 @@ ggplot(Clust9, aes(x = as.numeric(used_transport), fill = nosymptoms_past))+
 
 ```
 
-#Random forest
+#ML ver.2
 
 ##Data preparation
 ```{r}
 
-subset_5 <-  phone_survey_data[, c(4:11, 13, 21:37, 41:46)]
+subset_3 <-  phone_survey_data[, c(4:11, 13, 21:37, 41:46)]
 
-subset_5$num_people_home[is.na(subset_5$num_people_home)] <- 0
-subset_5$under_18[is.na(subset_5$under_18)] <- 0
-subset_5$over_65[is.na(subset_5$over_65)] <- 0
-subset_5$spouse_or_partner[is.na(subset_5$spouse_or_partner)] <- 0
-subset_5$other_people[is.na(subset_5$other_people)] <- 0
-subset_5 <- subset_5[subset_5$num_people_home < 6]
-subset_5 <- subset_5[subset_5$times_sick < 4]
+subset_3$num_people_home[is.na(subset_3$num_people_home)] <- 0
+subset_3$under_18[is.na(subset_3$under_18)] <- 0
+subset_3$over_65[is.na(subset_3$over_65)] <- 0
+subset_3$spouse_or_partner[is.na(subset_3$spouse_or_partner)] <- 0
+subset_3$other_people[is.na(subset_3$other_people)] <- 0
+subset_3 <- subset_3[subset_3$num_people_home < 6]
+subset_3 <- subset_3[subset_3$times_sick < 4]
 
 
 #Covid test: 0 - no test, 1 - negative, 2 - positive
 
-subset_5$selftested_covid_positive[is.na(subset_5$selftested_covid_positive)] <- 0
-subset_5$selftested_covid <- subset_5$selftested_covid_positive + subset_5$selftested_covid
-subset_5 <- subset_5[, -7]
+subset_3$selftested_covid_positive[is.na(subset_3$selftested_covid_positive)] <- 0
+subset_3$selftested_covid <- subset_3$selftested_covid_positive + subset_3$selftested_covid
+subset_3 <- subset_3[, -7]
 
 #Old partner
 
-subset_5$old_partner <- subset_5$under_18 + subset_5$over_65 + subset_5$spouse_or_partner + subset_5$other_people
-subset_5$old_partner[subset_5$old_partner > subset_5$num_people_home] <- 1
-subset_5$old_partner[(subset_5$spouse_or_partner == 0 | subset_5$over_65 == 0) | subset_5$old_partner == subset_5$num_people_home] <- 0
-subset_5$old_partner[subset_5[, 32] == 3] <- 2
+subset_3$old_partner <- subset_3$under_18 + subset_3$over_65 + subset_3$spouse_or_partner + subset_3$other_people
+subset_3$old_partner[subset_3$old_partner > subset_3$num_people_home] <- 1
+subset_3$old_partner[(subset_3$spouse_or_partner == 0 | subset_3$over_65 == 0) | subset_3$old_partner == subset_3$num_people_home] <- 0
+subset_3$old_partner[subset_3[, 32] == 3] <- 2
 
 #-------------------------------------------------------------------------------
 
-subset_5 <- na.omit(subset_5)
+subset_3 <- na.omit(subset_3)
 
 ```
 
@@ -664,25 +649,25 @@ subset_5 <- na.omit(subset_5)
 
 #Data
 
-logit_subset_5 <- subset_5[, -c(10:15, 18:24, 26)]
-logit_subset_5 <- logit_subset_5[logit_subset_5$street_used_mask != 0]
-logit_subset_5$street_used_mask[logit_subset_5[, 7] == 2] <- 0
-logit_subset_5 %>%
-  mutate(across(.cols = !age, .fns = as.factor)) -> logit_subset_5
-logit_subset_5$street_used_mask <- droplevels(logit_subset_5$street_used_mask)
+logit_subset_3 <- subset_3[, -c(10:15, 18:24, 26)]
+logit_subset_3 <- logit_subset_3[logit_subset_3$street_used_mask != 0]
+logit_subset_3$street_used_mask[logit_subset_3[, 7] == 2] <- 0
+logit_subset_3 %>%
+  mutate(across(.cols = !age, .fns = as.factor)) -> logit_subset_3
+logit_subset_3$street_used_mask <- droplevels(logit_subset_3$street_used_mask)
 
 
 #Model
 
 logit_model <- glm(street_used_mask ~ ., 
-                   data = logit_subset_5, 
+                   data = logit_subset_3, 
                    family = binomial(link = "logit"))
 
-lrm(street_used_mask ~ ., data = logit_subset_5[, -c(1, 8, 13, 17, 18)])
+lrm(street_used_mask ~ ., data = logit_subset_3[, -c(1, 8, 13, 17, 18)])
 
 predicted <- data.frame(
-  true_val = logit_subset_5$street_used_mask,
-  est_val = predict(logit_model, newdata = logit_subset_5, type = "response")
+  true_val = logit_subset_3$street_used_mask,
+  est_val = predict(logit_model, newdata = logit_subset_3, type = "response")
 )
 
 plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
@@ -692,7 +677,7 @@ plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), 
 ##Trained logit regression
 ```{r}
 set.seed(666)
-ML_data <- logit_subset_5
+ML_data <- logit_subset_3
 ML_data %>%
   mutate(across(.cols = !c(age, times_sick, self_medical_checkups), .fns = as.factor)) -> ML_data
 
@@ -732,7 +717,6 @@ cm_glm <- caret::confusionMatrix(pred_glm, test_data$street_used_mask)
 ```
 
 ##Rpart ML tree
-
 ```{r}
 
 fitControl1 <- trainControl(method = "cv", 
@@ -771,16 +755,9 @@ Base_tree_model <- rpart(formula = street_used_mask ~.,
 rpart.plot(x = Base_tree_model, 
            fallen.leaves = TRUE, clip.right.labs = FALSE)
 
-
-
-
-
-
-
-
 ```
 
-##Training random forest
+##Random forest
 ```{r}
 
 model_forest_2 <- caret::train(street_used_mask ~., data = train_data,
@@ -838,27 +815,6 @@ pred_prob_xgb <- predict(model_xgb, test_data, type="prob")
 # ROC value
 roc_xgb <- roc(test_data$street_used_mask, pred_prob_xgb$Yes)
 
-predicted <- data.frame(
-  true_val = test_data$street_used_mask,
-  est_val = predict(model_xgb, newdata = test_data)
-)
-
-plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
-
-```
-
-#Models comparison
-```{r}
-
-model_list <- list(Random_Forest = model_forest, XGBoost = model_xgb, Logistic_Regression = model_glm, Rpart_DT = model_rpart)
-resamples <- resamples(model_list)
-
-#box plot
-bwplot(resamples, metric="ROC")
-
-
-cor.plot(cor(ML_data[, -c(2, 7, 8)]), method = "number")
-
 ```
 
 #Neural Network
@@ -873,12 +829,26 @@ model_nn <- caret::train(street_used_mask ~., data = train_data,
                           method = "avNNet",
                           metric = "ROC",
                           tuneGrid = avNNetGrid,
-                          trControl = trainControl(method = "repeatedcv", number = 200,
+                          trControl = trainControl(method = "repeatedcv", number = 100,
                                                    classProbs = T, summaryFunction = twoClassSummary),
                           preProcess = c("center","scale","pca"))
 
 model_nn
 
+```
+
+#Models comparison
+```{r}
+
+model_list <- list(Random_Forest = model_forest, XGBoost = model_xgb, Logistic_Regression = model_glm, Rpart_DT = model_rpart, Neural_network = model_nn)
+resamples <- resamples(model_list)  #Для одинакового числа сэмплов
+
+#box plot
+bwplot(resamples, metric="ROC")
+
+cor.plot(cor(ML_data[, -c(2, 7, 8)]), method = "number")
+
+#-------------------------------------------------------------------------------
 predicted <- data.frame(
   true_val = test_data$street_used_mask,
   est_val = predict(model_forest, newdata = test_data)
@@ -892,8 +862,6 @@ res_table <- table(x = predicted$true_val, y = predicted$est_val)
 plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
 
 ```
-
-
 
 
 
