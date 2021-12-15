@@ -1,0 +1,900 @@
+---
+title: "GroupBy_home_members"
+author: "Fedor Logvin"
+date: "02 11 2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.height = 3,
+                      fig.width = 7)
+
+#General
+library(ggplot2)
+library(ggthemes)
+library(tidyverse)
+library(psych)
+library(flextable)
+library(broom)
+library(plotly)
+library(RColorBrewer)
+library(rms)
+library(ROCR)
+require(CHAID)
+
+# ML
+library(tidymodels)
+library(kknn)
+library(GGally)
+library(corrplot)
+library(rpart.plot) 
+library(treeheatr)
+library(caret) 
+library(mlr)
+library(Metrics)
+library(pROC) 
+library(caTools)
+library(gridExtra)
+library(ranger)
+
+```
+
+```{r}
+
+load("C:/Users/Fedor Logvin/Desktop/ДЗ_Биостат/VKR/My project/Data/phone_survey_data.rdata")
+
+```
+
+```{r}
+#human <- subset_1 %>%
+  #subset(ID == "00e9c1e4378c980a")
+```
+
+```{r}
+
+subset_3 <- phone_survey_data[, c(1, 4:6, 11, 12, 28, 41:44)]
+subset_3$num_people_home[subset_3$lives_alone == 1] <- 0
+subset_3$under_18[subset_3$lives_alone == 1] <- 0
+subset_3$over_65[subset_3$lives_alone == 1] <- 0
+subset_3 <- na.omit(subset_3)
+subset_3 <- subset_3[subset_3$num_people_home < 6]
+
+subset_3 <- as.data.frame(apply(subset_3[, c(2, 4:10)], MARGIN = 2, as.factor))
+
+```
+
+# Маски и сожители
+```{r, fig.height=4, fig.width= 11}
+
+ggplot(subset_3[num_people_home != c("4", "5")], aes(x = street_used_mask))+
+    geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+    facet_grid(.~ num_people_home)+
+    scale_x_continuous(breaks = 0:2, label = c("Не ходили", "Носят", "Не носят"))+
+    scale_y_continuous(breaks = c(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6))+
+    xlab("Ношение маски на улице (ось Х) по числу сожителей (группы)")+
+    ylab("%")
+ggsave("ношение маски по сожителям.pdf")
+
+subset_3 %>%
+  count(num_people_home)
+
+chisq.test(table(mask = subset_3$street_used_mask, members = subset_3$num_people_home))
+
+```
+
+# Мытье рук и сопроживание
+```{r}
+
+chisq.test(table(housemembers = subset_3$lives_alone, wash = subset_3$washing_hands_more))
+
+```
+
+#Влияет ли старость проживающего?
+```{r, fig.height=5}
+
+ggplot(subset_3[num_people_home != 0], aes(x = street_used_mask))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(.~ over_65)
+
+ggplot(subset_3[num_people_home != 0:1], aes(x = street_used_mask))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(under_18~ over_65)+
+  scale_x_continuous(breaks = 0:2, labels = c("Не ходили", "Носят", "Не носят"))
+
+chisq.test(table(partner = subset_3$over_65, mask = subset_3$street_used_mask))
+
+```
+# Влияют ли молодые проживающие?
+
+```{r}
+
+chisq.test(table(partner = subset_3$under_18, mask = subset_3$street_used_mask))
+
+ggplot(subset_3[num_people_home == 2 & over_65 == 0], aes(x = street_used_mask))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(.~ under_18)
+
+table(partner = subset_3$under_18, people = subset_3$num_people_home)
+table(partner = subset_3$over_65, people = subset_3$num_people_home)
+table(children = subset_3$under_18[subset_3$num_people_home != 0:1], parents = subset_3$over_65[subset_3$num_people_home != 0:1])
+
+```
+
+```{r}
+
+ggplot(subset_3[num_people_home != 0], aes(x = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(.~ under_18)+
+  scale_x_continuous(breaks = 0:1)
+
+```
+
+```{r}
+
+ggplot (subset_3[num_people_home != 0], aes(x = num_people_home, fill = factor(under_18)))+
+  geom_bar(position = 'fill')
+
+ggplot (subset_3[num_people_home != 0], aes(x = num_people_home, fill = factor(over_65)))+
+  geom_bar(position = 'fill')
+
+```
+
+```{r}
+
+chisq.test(table(housemembers = subset_3$num_people_home, healthy = subset_3$nosymptoms_past))
+
+```
+
+```{r}
+
+ggplot(subset_3, aes(x = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(.~ num_people_home)+
+  scale_x_continuous(breaks = 0:1)+
+  xlab("Absence of symptoms (X axis) by housemembers (groups)")+
+  ylab("% by group")
+
+```
+
+```{r, fig.height=12, fig.width=5}
+
+ggplot(subset_3, aes(x = street_used_mask))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")+
+  facet_grid(num_people_home ~ nosymptoms_past)+
+  scale_x_continuous(breaks = 0:2)
+ggsave("Plots/Безсимптомов_маски_сожители(гист).pdf")
+
+```
+
+```{r}
+
+chisq.test(table(mask = subset_3$street_used_mask, healthy = subset_3$nosymptoms_past ))
+
+```
+
+```{r, fig.height=7}
+
+fa_df <- phone_survey_data[, c(1, 6, 22:28, 41)]
+
+glimpse(fa_df)
+
+
+
+psych::KMO(cor(fa_df[, -c(1, 2)]))
+
+psych::cortest.bartlett(cor(fa_df[, -c(1, 2)]))
+
+cor.plot(cor(fa_df[, -c(1)]))
+
+factanal(fa_df[, -c(1)], factors = 2, scores = "Bartlett")
+
+fa_df$symptoms_score <- fa_df$cough_past + fa_df$fever_past+fa_df$sorethroat_past+fa_df$anosmia_past+fa_df$runnynose_past+fa_df$fatigue_past
+
+ggplot(fa_df, aes(x = symptoms_score))+
+  geom_histogram(aes(y = ..density..), binwidth = 1,col = 'black', fill = 'green')+
+  facet_grid(.~lives_alone)
+
+glm (symptoms_score ~ lives_alone*age, fa_df, family = poisson(link = "log")) %>%
+  broom::tidy (exponentiate = T)
+
+```
+
+#Влияние возраста проживающих
+```{r, fig.height=8}
+
+anova <- aov(data = subset_3, street_used_mask ~ num_people_home*under_18*over_65)
+summary(anova)
+
+plot(TukeyHSD(anova, which = "num_people_home"))
+
+ggplot(subset_3[subset_3$under_18 == 1 & subset_3$over_65 == 1], aes(x = street_used_mask))+
+  geom_histogram(aes(y = ..density..), binwidth = 1, col = "black", fill = "green")
+
+subset_3 %>%
+  count(under_18 == 1 & over_65 == 1)
+
+```
+
+#Группы по возрасту
+```{r}
+
+subset_age_members_defense_sympt <- phone_survey_data[, c(1, 6, 11, 12, 22:28, 41, 42)]
+subset_age_members_defense_sympt$num_people_home[subset_age_members_defense_sympt$lives_alone == 1] <- 0
+subset_age_members_defense_sympt$age_group <- cut(subset_age_members_defense_sympt$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
+subset_age_members_defense_sympt <-  subset_age_members_defense_sympt[subset_age_members_defense_sympt$num_people_home < 6]
+subset_age_members_defense_sympt <- na.omit(subset_age_members_defense_sympt)
+subset_age_members_defense_sympt <- subset_age_members_defense_sympt[subset_age_members_defense_sympt$street_used_mask != 0]
+subset_age_members_defense_sympt$street_used_mask[subset_age_members_defense_sympt$street_used_mask == 2] <- 0
+```
+
+#Dist of mask by age
+```{r, fig.width=12, fig.height=8}
+
+ggplot(subset_age_members_defense_sympt[age < 80], aes(x = age, fill = factor(street_used_mask)))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+  facet_grid(num_people_home ~.)
+
+ggplot(subset_age_members_defense_sympt[age < 80], aes(x = age))+
+  geom_histogram(fill = "green", col = "black")+
+  facet_grid(num_people_home ~.)
+
+cor.plot(cor(subset_age_members_defense_sympt[,-c(1, 5:10, 12, 14)]))
+
+```
+
+
+```{r}
+subset_age_members_defense_sympt %>%
+  cut(age, breaks = c(18:20, 21:25, 26:30, 31:35, 36:40, 41:45, 46:50, 51:55, 56:60, 61:65, 66:100))
+
+glimpse(subset_age_members_defense_sympt)
+
+```
+
+```{r}
+
+table(subset_age_members_defense_sympt$age_group)
+
+ggplot(subset_age_members_defense_sympt,
+       aes(x = age_group))+
+  geom_histogram(binwidth = 1, col = "black", fill = "green")
+
+```
+
+# Regression
+
+```{r,fig.height=6, fig.width=10}
+
+# Linear
+
+fit <- lm(data = subset_3, street_used_mask ~ age + num_people_home)
+
+summary(fit)
+plot(fit)
+
+#Logit
+
+logit_subset <- phone_survey_data[, c(1, 4:6, 11, 12, 28, 41:45)]
+logit_subset$num_people_home[logit_subset$lives_alone == 1] <- 0
+logit_subset$under_18[logit_subset$lives_alone == 1] <- 0
+logit_subset$over_65[logit_subset$lives_alone == 1] <- 0
+logit_subset <- na.omit(logit_subset)
+logit_subset <- logit_subset[logit_subset$num_people_home < 6]
+logit_subset <- logit_subset[logit_subset$street_used_mask != 0]
+logit_subset$street_used_mask <-logit_subset$street_used_mask - 1
+logit_subset$num_people_home <-  as.factor(logit_subset$num_people_home)
+logit_subset$street_used_mask <-  as.factor(logit_subset$street_used_mask)
+logit_subset$under_18 <-  as.factor(logit_subset$under_18)
+logit_subset$over_65 <- as.factor(logit_subset$over_65)
+logit_subset$male <- as.factor(logit_subset$male)
+
+
+
+glimpse(logit_subset)
+
+fit_2 <- glm(
+  street_used_mask ~ age + num_people_home + male + district, 
+  family = binomial(link = "logit"), 
+  logit_subset
+  )
+
+summary(fit_2)
+
+fit_2_tested <- lrm(street_used_mask ~ age + num_people_home  +  district + under_18 + over_65, logit_subset)
+
+fit_2_tested
+
+#Prediction and visualization of effectiveness
+
+predicted_df <- logit_subset
+predicted_df$maskP <- predict.glm(fit_2, newdata = predicted_df, type = "response")
+
+predicted_df$bin_maskP[predicted_df$maskP >= 0.5] <- 1
+predicted_df$bin_maskP[predicted_df$maskP < 0.5] <- 0
+
+predicted_df$maskP[predicted_df$bin_maskP == predicted_df$street_used_mask] <- "1"
+predicted_df$maskP[predicted_df$maskP != "1"] <- "0"
+
+predicted_df %>%
+  count(maskP == 1)
+
+ggplot(predicted_df, aes(x = age, y = maskP, col = factor(maskP)))+
+  geom_point()+
+  geom_jitter()
+
+remove(temp_df)
+
+#Visualization
+
+predicted <- data.frame(street_used_mask_pred = predict(fit, subset_3), age = subset_3$age)
+
+p <- plot_ly(x = subset_3$age, 
+        y = subset_3$street_used_mask, 
+        z = subset_3$num_people_home, 
+        type = "scatter3d", 
+        mode = "markers", 
+        color = "spectral")
+
+ggplotly(
+  ggplot(subset_3, aes(x = age, y = num_people_home, col = factor(street_used_mask)))+
+  geom_point()+
+  geom_jitter()+
+  scale_y_continuous(breaks = 0:5)
+  )
+
+ggplot(logit_subset, aes(x = age))+
+  geom_bar(col = "black", fill = "green")
+
+```
+# ML
+
+## Data
+```{r}
+
+subset_3 <- subset_3[subset_3$street_used_mask != 0]
+subset_3$street_used_mask[subset_3$street_used_mask == 2] <- 0
+subset_3$street_used_mask <- as.factor(subset_3$street_used_mask)
+subset_3$male <- as.factor(subset_3$male)
+subset_3$num_people_home <- as.factor(subset_3$num_people_home)
+subset_3$under_18 <- as.factor(subset_3$under_18)
+subset_3$over_65 <- as.factor(subset_3$over_65)
+
+
+splitted_data <- initial_split(subset_3, prop = 0.8, strata = "street_used_mask")
+train_data <- splitted_data %>% training()
+test_data <-  splitted_data %>% testing()
+
+```
+
+##recipe
+```{r}
+
+ML_recipe <-  recipes::recipe(street_used_mask ~ age_group + under_18 + male, train_data)%>%
+  step_normalize(all_numeric_predictors()) 
+ 
+```
+
+##folds
+```{r}
+
+folds <- vfold_cv(train_data, v = 10, repeats = 5, strata = street_used_mask, pool = 0.2) 
+
+```
+
+##Model preparation
+```{r}
+
+knn_model <- nearest_neighbor(neighbors = tune(), weight_func = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+knn_params <- knn_model%>%
+  parameters() %>%
+  update(neighbors = neighbors(c(5L, 50L)),
+         weight_func = weight_func(c("gaussian", "optimal", "rectangular", "triangular")))
+
+```
+
+##Pipeline
+```{r}
+
+knn_pipeline <- workflow() %>%
+  add_recipe(ML_recipe) %>%
+  add_model(knn_model)
+
+```
+
+##Cross-validation
+```{r}
+
+knn_pipeline %>%
+  tune_grid(resamples = folds,
+            grid = 10,
+            metrics = yardstick::metric_set(mn_log_loss)) -> crossval_results
+
+crossval_results$.metrics
+
+```
+
+##Best model
+```{r}
+
+best_params <- tune::select_best(crossval_results, metric = "mn_log_loss")
+
+```
+
+##Learning
+```{r}
+
+knn_pipeline %>%
+  tune::finalize_workflow(best_params) %>%
+  parsnip::fit(data = train_data) -> finalize_pipeline
+
+```
+
+##Testing
+```{r}
+
+metrics_for_testing <- yardstick::metric_set(yardstick::bal_accuracy,
+                                             yardstick::precision,
+                                             yardstick::recall,
+                                             yardstick::f_meas,
+                                             yardstick::sensitivity,
+                                             yardstick::specificity)
+finalize_pipeline %>%
+  predict(new_data = test_data) %>%
+  bind_cols(test_data %>% select(street_used_mask)) %>%
+  metrics_for_testing(truth = street_used_mask, estimate = .pred_class) -> ML_metrics
+
+print(ML_metrics)
+
+finalize_pipeline %>%
+  predict(new_data = test_data) %>%
+  bind_cols(test_data %>% select(street_used_mask)) -> Test
+
+Test$.pred_class <- as.numeric(Test$.pred_class)
+Test$street_used_mask <- as.numeric(Test$street_used_mask)
+
+
+plot(ROCR::performance(ROCR::prediction(Test$.pred_class, Test$street_used_mask), "tpr", "fpr"), colorize = T)
+
+```
+# CHAID (mask ~)
+```{r}
+
+subset_3$age_group <- cut(subset_3$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
+
+subset_3$nosymptoms_past <- as.factor(subset_3$nosymptoms_past)
+subset_3$num_people_home <- as.ordered(subset_3$num_people_home)
+
+chaid_res <- chaid(street_used_mask ~ male + district + nosymptoms_past + num_people_home + over_65 + under_18 + age_group, 
+                   data = subset_3)
+
+plot (chaid_res,gp = gpar(fontsize = 9))
+
+summary(subset_3$age_group)
+
+```
+
+## Cluster 3
+```{r}
+# Ages 26-30
+
+Clust1 <- subset_3[subset_3$age_group == "18-25"]
+
+prop.table(table(mask = Clust1$street_used_mask, youngsters = Clust1$under_18), margin = 2)
+
+ggplot(Clust1, aes(x = as.numeric(under_18), fill = street_used_mask))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+  scale_x_continuous(breaks = 1:2, labels = c("w/o 18 y.o.", "with 18 y.o."))
+
+```
+
+## Cluster 6
+```{r}
+#Ages 31-35
+
+Clust2 <- subset_3[subset_3$age_group == "31-35"]
+
+prop.table(table(mask = Clust2$street_used_mask, youngsters = Clust2$under_18), margin = 2)
+
+ggplot(Clust2, aes(x = as.numeric(under_18), fill = street_used_mask))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+  scale_x_continuous(breaks = 1:2, labels = c("w/o 18 y.o.", "with 18 y.o."))
+
+```
+
+## Cluster 8
+```{r}
+# With youngsters, ages 31-35
+
+Clust3 <- subset_3[subset_3$age_group == "31-35" & subset_3$under_18 == "1"]
+
+prop.table(table(mask = Clust3$street_used_mask, symptoms = Clust3$nosymptoms_past), margin = 2)
+
+ggplot(Clust3, aes(x = as.numeric(nosymptoms_past), fill = street_used_mask))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+  scale_x_continuous(breaks = 1:2, labels = c("with symptoms", "w/o symptoms"))
+
+```
+
+## Cluster 12
+```{r}
+#Ages 50+
+
+Clust4 <- subset_3[subset_3$age > 50 ]
+
+prop.table(table(mask = Clust4$street_used_mask, males = Clust4$male), margin = 2)
+
+ggplot(Clust4, aes(x = as.numeric(male), fill = street_used_mask))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+  scale_x_continuous(breaks = 1:2, labels = c("female", "male"))
+
+```
+
+##Cluster 1
+```{r}
+
+Clust5 <- subset_3[, 4:5]
+Clust5$age_group <- as.ordered(cut(Clust5$age, breaks = c(17, 25, 30, 35, 50, 95), labels = 0:4))
+
+ggplot(Clust5, aes(x = as.numeric(age_group), fill = street_used_mask))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")
+
+```
+
+#CHAID (nosymptoms_past ~)
+## Data preparation
+```{r}
+
+subset_4 <- phone_survey_data[, c(1, 4:8, 11, 12, 22:28, 42:46)]
+subset_4$num_people_home[is.na(subset_4$num_people_home)] <- 0
+subset_4$under_18[is.na(subset_4$under_18)] <- 0
+subset_4$over_65[is.na(subset_4$over_65)] <- 0
+subset_4$spouse_or_partner[is.na(subset_4$spouse_or_partner)] <- 0
+subset_4$other_people[is.na(subset_4$other_people)] <- 0
+subset_4 <- na.omit(subset_4)
+subset_4$age_group <- cut(subset_4$age, breaks = c(17, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 95), labels = c("18-25", "26-30", "31-35", "36-40", "41-45", "46-50", "51-55", "56-60", "61-65", "66-70", "71+"), ordered = T)
+subset_4 <- subset_4[subset_4$num_people_home < 6]
+subset_4[, -4] %>%
+  mutate(across(.cols = is.numeric, .fns = as.factor)) -> subset_4
+
+```
+
+##CHAID func
+```{r}
+
+chaid_res_2 <- chaid(nosymptoms_past ~ ., data = subset_4[, -c(1, 8:13)], control = chaid_control(minbucket = 150, minprob = 0.2))
+
+plot(chaid_res_2, gp = gpar(fontsize = 8))
+
+
+```
+
+##Cluster 1
+```{r}
+
+Clust6 <- subset_4[, c(14, 20)]
+Clust6$age_group <- as.character(Clust6$age_group)
+
+Clust6$age_group[Clust6$age_group == "18-25" | Clust6$age_group == "26-30" | Clust6$age_group == "31-35"] <-  "0"
+Clust6$age_group[Clust6$age_group == "36-40" | Clust6$age_group == "41-45"] <- 1
+Clust6$age_group[Clust6$age_group == "46-50" | Clust6$age_group == "51-55"] <- 2
+Clust6$age_group[Clust6$age_group != c("0", "1", "2") ] <-  3
+
+ggplot(Clust6, aes(x = as.numeric(age_group), fill = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")
+
+```
+
+##Cluster 2
+```{r}
+
+Clust7 <-  subset_4[subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35"]
+Clust7 <- Clust7[, c(4, 14)]
+
+ggplot(Clust7, aes(x = as.numeric(travelled), fill = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+    scale_x_continuous(breaks = 1:2, labels = c("0", "1"))
+
+```
+
+##Cluster 3
+```{r}
+
+Clust8 <-  subset_4[(subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35") & subset_4$travelled == "0"]
+Clust8 <- Clust8[, c(14, 17)]
+
+ggplot(Clust8, aes(x = as.numeric(over_65), fill = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+    scale_x_continuous(breaks = 1:2, labels = c("0", "1"))
+
+```
+
+##CLuster 4
+```{r}
+
+Clust9 <-  subset_4[(subset_4$age_group == "18-25"| subset_4$age_group == "26-30" | subset_4$age_group == "31-35") & subset_4$travelled == "0" & subset_4$over_65 == "0"]
+Clust9 <- Clust9[, c(5, 14)]
+
+ggplot(Clust9, aes(x = as.numeric(used_transport), fill = nosymptoms_past))+
+  geom_histogram(aes(y = ..density..), position = "fill", binwidth = 1, col = "black")+
+    scale_x_continuous(breaks = 1:2, labels = c("0", "1"))
+
+```
+
+#Random forest
+
+##Data preparation
+```{r}
+
+subset_5 <-  phone_survey_data[, c(4:11, 13, 21:37, 41:46)]
+
+subset_5$num_people_home[is.na(subset_5$num_people_home)] <- 0
+subset_5$under_18[is.na(subset_5$under_18)] <- 0
+subset_5$over_65[is.na(subset_5$over_65)] <- 0
+subset_5$spouse_or_partner[is.na(subset_5$spouse_or_partner)] <- 0
+subset_5$other_people[is.na(subset_5$other_people)] <- 0
+subset_5 <- subset_5[subset_5$num_people_home < 6]
+subset_5 <- subset_5[subset_5$times_sick < 4]
+
+
+#Covid test: 0 - no test, 1 - negative, 2 - positive
+
+subset_5$selftested_covid_positive[is.na(subset_5$selftested_covid_positive)] <- 0
+subset_5$selftested_covid <- subset_5$selftested_covid_positive + subset_5$selftested_covid
+subset_5 <- subset_5[, -7]
+
+#Old partner
+
+subset_5$old_partner <- subset_5$under_18 + subset_5$over_65 + subset_5$spouse_or_partner + subset_5$other_people
+subset_5$old_partner[subset_5$old_partner > subset_5$num_people_home] <- 1
+subset_5$old_partner[(subset_5$spouse_or_partner == 0 | subset_5$over_65 == 0) | subset_5$old_partner == subset_5$num_people_home] <- 0
+subset_5$old_partner[subset_5[, 32] == 3] <- 2
+
+#-------------------------------------------------------------------------------
+
+subset_5 <- na.omit(subset_5)
+
+```
+
+##Logit regression
+```{r}
+
+#Data
+
+logit_subset_5 <- subset_5[, -c(10:15, 18:24, 26)]
+logit_subset_5 <- logit_subset_5[logit_subset_5$street_used_mask != 0]
+logit_subset_5$street_used_mask[logit_subset_5[, 7] == 2] <- 0
+logit_subset_5 %>%
+  mutate(across(.cols = !age, .fns = as.factor)) -> logit_subset_5
+logit_subset_5$street_used_mask <- droplevels(logit_subset_5$street_used_mask)
+
+
+#Model
+
+logit_model <- glm(street_used_mask ~ ., 
+                   data = logit_subset_5, 
+                   family = binomial(link = "logit"))
+
+lrm(street_used_mask ~ ., data = logit_subset_5[, -c(1, 8, 13, 17, 18)])
+
+predicted <- data.frame(
+  true_val = logit_subset_5$street_used_mask,
+  est_val = predict(logit_model, newdata = logit_subset_5, type = "response")
+)
+
+plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
+
+```
+
+##Trained logit regression
+```{r}
+set.seed(666)
+ML_data <- logit_subset_5
+ML_data %>%
+  mutate(across(.cols = !c(age, times_sick, self_medical_checkups), .fns = as.factor)) -> ML_data
+
+levels(ML_data$male) <- c("No", "Yes")
+levels(ML_data$travelled) <- c("No", "Yes")
+levels(ML_data$used_transport) <- c("No", "Yes")
+levels(ML_data$selftested_covid) <- c("Not tested", "Neg", "Pos")
+levels(ML_data$street_used_mask) <- c("No", "Yes")
+levels(ML_data$nosymptoms_past) <- c("No", "Yes")
+levels(ML_data$no_checkups) <- c("No", "Yes")
+levels(ML_data$under_18) <- c("No", "Yes")
+levels(ML_data$over_65) <-  c("No", "Yes")
+levels(ML_data$spouse_or_partner) <-  c("No", "Yes")
+levels(ML_data$old_partner) <-  c("No", "Yes", "Maybe")
+ML_data <- ML_data[ML_data$age < 88]
+
+splitted_data <- initial_split(ML_data, prop = 0.8, strata = "street_used_mask")
+train_data <- splitted_data %>% training()
+test_data <-  splitted_data %>% testing()
+#-----------------------------------------------------------------------------
+
+model_glm <- caret::train(street_used_mask ~., data = train_data,
+                          method = "glm",
+                          metric = "ROC",
+                          tuneLength = 100,
+                          trControl = trainControl(method = "cv", number = 100,
+                                                   classProbs = T, summaryFunction = twoClassSummary),
+                          preProcess = c("center","scale","pca"))
+
+model_glm
+
+# prediction on Test data set
+pred_glm <- predict(model_glm, test_data)
+# Confusion Matrix 
+cm_glm <- caret::confusionMatrix(pred_glm, test_data$street_used_mask)
+
+```
+
+##Rpart ML tree
+
+```{r}
+
+fitControl1 <- trainControl(method = "cv", 
+                            number = 500,
+                            repeats = 10,
+                            classProbs = T, 
+                            summaryFunction = twoClassSummary,
+                            search = "random")
+
+model_rpart <- caret::train(street_used_mask ~., data = train_data,
+                            method = "rpart",
+                            metric = "ROC",
+                            tuneLength = 30,
+                            trControl = fitControl1)
+
+# prediction on Test data set
+pred_rpart <- predict(model_rpart, train_data)
+# Confusion Matrix 
+cm_rpart <- caret::confusionMatrix(pred_rpart, train_data$street_used_mask, positive = "Yes")
+cm_rpart
+
+rpart.plot::rpart.plot(model_rpart$finalModel, type = 2, 
+                       fallen.leaves = T, extra = 2, cex = 0.70)
+
+x <- partykit::as.party(model_rpart$finalModel)
+heat_tree(x = x)
+
+```
+
+##Base rpart tree
+```{r}
+Base_tree_model <- rpart(formula = street_used_mask ~., 
+                        data = train_data, 
+                        method = "class")
+
+rpart.plot(x = Base_tree_model, 
+           fallen.leaves = TRUE, clip.right.labs = FALSE)
+
+
+
+
+
+
+
+
+```
+
+##Training random forest
+```{r}
+
+model_forest_2 <- caret::train(street_used_mask ~., data = train_data,
+                             method = "ranger",
+                             metric = "ROC",
+                             tuneGrid = data.frame(mtry = 40,
+                                                   splitrule = "gini",
+                                                   min.node.size = 200),
+                             trControl = trainControl(method = "repeatedcv", number = 5,
+                                                      classProbs = T, summaryFunction = twoClassSummary))
+
+# prediction on Test data set
+pred_rf <- predict(model_forest_2, train_data)
+cm_rf <- confusionMatrix(pred_rf, train_data$street_used_mask, positive = "Yes")
+cm_rf
+pred_rf <- predict(model_forest_2, test_data)
+cm_rf <- confusionMatrix(pred_rf, test_data$street_used_mask, positive = "Yes")
+cm_rf
+
+model_forest_2$results
+plot(model_forest_2$finalModel)
+
+```
+
+#XGBoost
+```{r}
+
+xgb_grid_1  <-  expand.grid(
+  nrounds = 500,
+  eta = c(0.03),
+  max_depth = 3,
+  gamma = 0,
+  colsample_bytree = 0.6,
+  min_child_weight = 1,
+  subsample = 0.5
+)
+
+fitControl1 <- trainControl(method = "none", classProbs = T)
+
+model_xgb <- caret::train(street_used_mask ~., data = train_data,
+                          method = "xgbTree",
+                          metric = "ROC",
+                          tuneGrid=xgb_grid_1,
+                          trControl = trainControl(method = "cv", number = 100,
+                                                   classProbs = T, summaryFunction = twoClassSummary),
+                          preProcess = c("center","scale","pca"))
+
+# prediction on Test data set
+pred_xgb <- predict(model_xgb, test_data)
+# Confusion Matrix 
+cm_xgb <- confusionMatrix(pred_xgb, test_data$street_used_mask, positive="Yes")
+
+# Prediction Probabilities
+pred_prob_xgb <- predict(model_xgb, test_data, type="prob")
+# ROC value
+roc_xgb <- roc(test_data$street_used_mask, pred_prob_xgb$Yes)
+
+predicted <- data.frame(
+  true_val = test_data$street_used_mask,
+  est_val = predict(model_xgb, newdata = test_data)
+)
+
+plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
+
+```
+
+#Models comparison
+```{r}
+
+model_list <- list(Random_Forest = model_forest, XGBoost = model_xgb, Logistic_Regression = model_glm, Rpart_DT = model_rpart)
+resamples <- resamples(model_list)
+
+#box plot
+bwplot(resamples, metric="ROC")
+
+
+cor.plot(cor(ML_data[, -c(2, 7, 8)]), method = "number")
+
+```
+
+#Neural Network
+```{r}
+set.seed(666)
+
+avNNetGrid <- expand.grid(size = 1,
+                          decay = 0.1,
+                          bag = T)
+
+model_nn <- caret::train(street_used_mask ~., data = train_data,
+                          method = "avNNet",
+                          metric = "ROC",
+                          tuneGrid = avNNetGrid,
+                          trControl = trainControl(method = "repeatedcv", number = 200,
+                                                   classProbs = T, summaryFunction = twoClassSummary),
+                          preProcess = c("center","scale","pca"))
+
+model_nn
+
+predicted <- data.frame(
+  true_val = test_data$street_used_mask,
+  est_val = predict(model_forest, newdata = test_data)
+)
+
+levels(predicted$true_val) <- c("0", "1")
+levels(predicted$est_val) <- c("0", "1")
+res_table <- table(x = predicted$true_val, y = predicted$est_val)
+(res_table[1,1] + res_table[2,2])/1342
+
+plot(ROCR::performance(ROCR::prediction(predicted$est_val, predicted$true_val), "tpr", "fpr"), colorize = T)
+
+```
+
+
+
+
+
+
